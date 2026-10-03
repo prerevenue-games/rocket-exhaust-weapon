@@ -1,0 +1,34 @@
+# Uploads the game to itch.io whenever index.html changes on main.
+# Setup (once), in this repo's Settings -> Secrets and variables -> Actions:
+#   Secrets   tab: BUTLER_API_KEY = an API key from itch.io (Settings -> API keys)
+#   Variables tab: ITCH_GAME      = your-itch-username/your-game-page  (e.g. prerevenue/rocket-exhaust-weapon)
+# Until ITCH_GAME is set, this workflow skips itself.
+name: Publish to itch.io
+
+on:
+  push:
+    branches: [main]
+    paths: [index.html]
+  workflow_dispatch:        # also adds a "Run workflow" button on the Actions tab
+
+jobs:
+  itch:
+    if: ${{ vars.ITCH_GAME != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage the build (only the game, not the repo extras)
+        run: mkdir build && cp index.html build/
+
+      - name: Install butler (itch.io's upload tool)
+        run: |
+          curl -sSL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d butler
+          chmod +x butler/butler
+          ./butler/butler -V
+
+      - name: Push to itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: ./butler/butler push build "${{ vars.ITCH_GAME }}:html5" --userversion "${{ github.run_number }}"
