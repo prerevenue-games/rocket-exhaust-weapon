@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rocket Exhaust Weapon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Major+Mono+Display&family=Chakra+Petch:wght@400;600&family=Share+Tech+Mono&display=swap">
+<style>
+/* Layout: full-bleed vector arcade screen, thin HUD strip on top, one centered briefing card, thumb pads on touch devices. Single dark look by design. */
+:root{
+  --void:#05060d;
+  --ink:#e8ecff;
+  --dim:#7d86b3;
+  --line:#2a2f55;
+  --flame:#ff8a2a;
+  --fuel:#b56bff;
+  --cyan:#4fe3ff;
+  --danger:#ff3d2e;
+  --repair:#6dff9e;
+  --f-display:'Major Mono Display', 'Courier New', monospace;
+  --f-body:'Chakra Petch', system-ui, sans-serif;
+  --f-data:'Share Tech Mono', ui-monospace, monospace;
+  color-scheme:dark;
+}
+/* The overlay and help rows are toggled with the hidden attribute. Without this rule, #overlay{display:flex} overrides it and the card never goes away. */
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--void);color:var(--ink);font-family:var(--f-body);overflow:hidden;-webkit-user-select:none;user-select:none}
+#wrap{position:relative;height:100%;width:100%}
+#game{display:block;width:100%;height:100%;touch-action:none;background:var(--void)}
+
+#hud{position:absolute;top:0;left:0;right:0;display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;padding:10px 16px;font-family:var(--f-data);font-size:12px;pointer-events:none;font-variant-numeric:tabular-nums}
+.stat,.meter{display:flex;align-items:center;gap:8px}
+.lbl{color:var(--dim);letter-spacing:.12em}
+.val{color:var(--ink);font-size:15px}
+.bar{width:88px;height:6px;border:1px solid var(--line);position:relative}
+.bar i{position:absolute;inset:0 auto 0 0;width:100%;background:var(--ink)}
+#hull.low{background:var(--danger)}
+#hull.heal{background:var(--repair)}
+#tank{background:var(--fuel)}
+#rcs{background:var(--cyan)}
+#mode{color:var(--flame);font-size:15px}
+
+#overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;pointer-events:none}
+.card{pointer-events:auto;max-width:34rem;width:100%;background:rgba(5,6,13,.84);border:1px solid var(--line);padding:26px 24px 22px;display:grid;gap:16px}
+.card h1{margin:0;font-family:var(--f-display);font-weight:400;font-size:clamp(26px,6vw,40px);line-height:1.05;text-wrap:balance;color:var(--ink);text-shadow:0 0 14px rgba(255,138,42,.55)}
+.card p{margin:0;color:var(--ink);line-height:1.5;max-width:60ch}
+.card .sub{color:var(--dim)}
+.controls{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-family:var(--f-data);font-size:13px;align-items:baseline}
+.controls .h{color:var(--dim);letter-spacing:.12em;font-size:11px}
+.controls span{min-width:0}
+kbd{font-family:var(--f-data);border:1px solid var(--line);padding:0 5px;color:var(--ink)}
+.tip{border-left:2px solid var(--fuel);padding-left:10px;color:var(--ink);font-size:14px}
+.btns{display:flex;flex-wrap:wrap;gap:10px}
+#ov-btn{font-family:var(--f-data);font-size:15px;letter-spacing:.1em;color:var(--void);background:var(--flame);border:0;padding:11px 18px;cursor:pointer}
+#ov-btn:hover{background:var(--ink)}
+#ov-btn2{font-family:var(--f-data);font-size:15px;letter-spacing:.1em;color:var(--ink);background:transparent;border:1px solid var(--line);padding:10px 17px;cursor:pointer}
+#ov-btn2:hover{border-color:var(--flame);color:var(--flame)}
+#ov-btn:focus-visible,#ov-btn2:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+
+#touch{display:none;position:absolute;left:0;right:0;bottom:0;padding:12px 16px calc(14px + env(safe-area-inset-bottom,0px));justify-content:space-between;align-items:flex-end;pointer-events:none;gap:12px}
+#touch .grp{display:flex;gap:10px;align-items:flex-end;pointer-events:auto}
+#touch .lgrp{display:grid;grid-template-columns:repeat(3,auto);gap:10px;justify-items:center;align-items:end;pointer-events:auto}
+#touch .rcsb{width:52px;height:46px;font-size:12px;border-color:var(--cyan);color:var(--cyan)}
+#touch .rot{grid-row:2}
+#touch button{font-family:var(--f-data);color:var(--ink);background:rgba(20,24,52,.55);border:1px solid var(--line);width:64px;height:64px;font-size:14px;letter-spacing:.08em;touch-action:none;-webkit-tap-highlight-color:transparent}
+#touch button.on{border-color:var(--flame);color:var(--flame);background:rgba(255,138,42,.14)}
+#t-burn{width:88px!important;height:88px!important;border-color:var(--flame)!important;color:var(--flame)!important}
+#t-dump{border-color:var(--fuel)!important;color:var(--fuel)!important}
+#t-brake.off{visibility:hidden}
+@media (hover:none) and (pointer:coarse){#touch{display:flex}.kb{display:none}}
+@media (hover:hover){.tc{display:none}}
+@media (max-width:420px){.bar{width:64px}#hud{gap:6px 14px}}
+</style>
+
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" aria-label="Game screen"></canvas>
+  <div id="hud" aria-live="off">
+    <div class="stat"><span class="lbl">SCORE</span><span class="val" id="score">0</span></div>
+    <div class="stat"><span class="lbl">WAVE</span><span class="val" id="wave">1</span></div>
+    <div class="meter"><span class="lbl">HULL</span><div class="bar"><i id="hull"></i></div></div>
+    <div class="meter"><span class="lbl">DUMP TANK</span><div class="bar"><i id="tank"></i></div></div>
+    <div class="meter"><span class="lbl">RCS</span><div class="bar"><i id="rcs"></i></div></div>
+    <div class="stat"><span class="lbl">PLUME</span><span id="mode">TIGHT</span></div>
+  </div>
+
+  <div id="overlay">
+    <div class="card">
+      <h1 id="ov-title">rocket exhaust weapon</h1>
+      <p id="ov-text">Your guns are dead. The engine still works. Point the burn at them.</p>
+      <div id="ov-help">
+        <div class="controls">
+          <span class="h">ACTION</span><span class="h kb">KEYS</span><span class="h tc">TOUCH</span>
+          <span>Rotate</span><span class="kb"><kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd></span><span class="tc">◀ ▶</span>
+          <span>Burn</span><span class="kb"><kbd>↑</kbd> / <kbd>W</kbd></span><span class="tc">BURN</span>
+          <span>RCS strafe</span><span class="kb"><kbd>Q</kbd> <kbd>E</kbd></span><span class="tc">‹ ›</span>
+          <span>RCS retro</span><span class="kb"><kbd>↓</kbd> / <kbd>S</kbd></span><span class="tc">RETRO</span>
+          <span>Tight / wide plume</span><span class="kb"><kbd>Shift</kbd> or <kbd>F</kbd></span><span class="tc">MODE</span>
+          <span data-hb>Handbrake (auto RCS)</span><span class="kb" data-hb><kbd>Space</kbd></span><span class="tc" data-hb>BRAKE</span>
+          <span>Dump fuel</span><span class="kb"><kbd>X</kbd></span><span class="tc">DUMP</span>
+          <span>Pause</span><span class="kb"><kbd>P</kbd> / <kbd>Esc</kbd></span><span class="tc">—</span>
+          <span>Mute sound</span><span class="kb"><kbd>M</kbd></span><span class="tc">SND</span>
+        </div>
+      </div>
+      <p class="tip" id="ov-tip">Tight plume: long, hot, fast. Wide plume: short and broad, less thrust. Dumping cuts the engine; drift clear, then relight into the fuel cloud. Enemy lasers can set it off too. RCS is cold gas: weak, limited, and safe to use inside a fuel cloud. Green scrap repairs your hull, but your exhaust blows it away.<span data-hb> The handbrake is an all-stop: the nose and side RCS thrusters together push straight against your drift, sharing one thruster's worth of output. While held it takes over the RCS, so strafe and retro do nothing. Drifting tail-first, it can only kill the sideways part.</span></p>
+      <div class="btns">
+        <button id="ov-btn" type="button">LIGHT THE ENGINE</button>
+        <button id="ov-btn2" type="button" hidden>START SCREEN</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="touch" aria-hidden="true">
+    <div class="lgrp">
+      <button class="rcsb" data-k="SL" type="button">‹</button>
+      <button class="rcsb" data-k="B" type="button">RETRO</button>
+      <button class="rcsb" data-k="SR" type="button">›</button>
+      <button class="rot" data-k="L" type="button">◀</button>
+      <button class="rot rcsb" id="t-brake" data-k="HB" type="button" style="height:64px">BRAKE</button>
+      <button class="rot" data-k="R" type="button">▶</button>
+    </div>
+    <div class="grp">
+      <button id="t-snd" type="button" style="width:52px;height:46px;font-size:11px">SND</button>
+      <button id="t-mode" type="button">MODE</button>
+      <button id="t-dump" data-k="D" type="button">DUMP</button>
+      <button id="t-burn" data-k="T" type="button">BURN</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(()=>{
+/* =====================================================================
+   TUNE: every gameplay number lives here.
+   Units: px, px/s, px/s² (thrust), seconds, rad. "thr" = throttle 0..1.
+   Pairs written [a,b] are random ranges.
+   ===================================================================== */
+const TUNE={
+  ship:{
+    thrust:{tight:380,wide:190},    // main engine acceleration
+    throttleUp:5,throttleDown:7,    // throttle change per second
+    turnRate:4.4,turnResponse:14,   // rad/s, and how fast it reaches that rate
+    drag:0.35,                      // velocity *= exp(-drag*dt)
+    maxSpeed:540,
+    spinDecay:2.2,                  // blast-induced spin decays exp(-k*dt)
+    hull:100,
+    hullRepairPerWave:20,
+    invuln:0.45,                    // seconds of invulnerability after a hit
+    boltHitRadius:11,               // enemy bolt vs ship
+    contactPad:10                   // enemy contact distance = enemy r + this
+  },
+  plume:{
+    length:{tight:300,wide:150},    // x thr
+    halfAngle:{tight:0.1,wide:0.5}, // rad
+    dps:{tight:95,wide:80},         // x thr. With coverage on, this is the whole flame's output
+    tipFalloff:0.5,                 // damage lost at the tip (0.5 = half damage)
+    // coverage: an enemy takes the share of the cone it blocks, judged from the nozzle.
+    // Close enemies fill the cone and take it all; distant ones catch a sliver (never below coverageFloor).
+    coverage:{tight:false,wide:true},
+    coverageFloor:0.5,
+    coverageMax:0.9,                // most of the flame an enemy can catch; trims only the point-blank peak
+    push:260,                       // enemy push per second, x thr
+    nozzle:11,                      // plume origin behind ship centre
+    ignite:[0.03,0.09],             // fuse when plume touches a fuel blob
+    // visual only
+    partSpeed:{tight:560,wide:300},
+    partRate:{tight:4,wide:6}
+  },
+  rcs:{
+    tank:100,
+    drain:28,                       // per active thruster, per second
+    recharge:16,                    // only while no RCS key is held
+    strafe:70,
+    retro:99,                       // manual retro (S/Down): its own thruster, separate from the handbrake's
+    handbrake:{
+      enabled:true,                 // false = locked (for the planned unlock)
+      nose:70,side:70,              // per-thruster max
+      maxOutput:99,                 // cap on the combined push (70+70 at 45° ≈ 99); drain scales with output/maxOutput
+      minSpeed:4                    // ignore drift slower than this
+    }
+  },
+  dump:{                            // fuel dump: a spray of droplets out the back
+    tank:100,
+    dropletsPerTank:30,             // each droplet costs tank/dropletsPerTank
+    interval:0.025,                 // seconds between droplets (~0.75 s to empty a full tank)
+    recharge:11,                    // per second, only while X is not held
+    spread:0.4,                     // half-angle of the spray cone, rad (tight plume 0.1, wide 0.5); droplets bunch toward the centre
+    speed:[90,180],                 // out of the nozzle, relative to the ship; with drag 0.9 they carry ~100-200 px
+    inherit:0.55,                   // share of the ship's velocity a droplet keeps
+    drag:0.9,
+    size:[3,4.5],                   // starting radius
+    grow:2,                         // radius multiplier reached just as the fade begins
+    life:10,fade:2,                 // seconds alive, and the fade-out at the end
+    power:0.35,                     // each droplet's explosion vs the full-strength blast values below
+    offset:13                       // droplets leave this far behind the ship's centre
+  },
+  blast:{                           // one full-strength fuel explosion; each droplet uses dump.power of the damage and pushes
+    radius:90,duration:0.55,
+    damage:55,damageFalloff:110,minDamageFrac:0.35, // dmg = damage*max(minFrac,1-d/falloff)
+    push:300,pushFalloff:140,       // enemy push = push*(1-d/falloff)
+    chainRadius:65,chainFuse:[0.05,0.12],
+    boltIgniteFuse:0.02,
+    clearBolts:90,                  // bolts within this radius are destroyed
+    shipRadius:150,shipPush:300,shipSpin:7,          // scaled by (1-d/shipRadius)
+    shipHurtRadius:55,shipHurt:6
+  },
+  enemy:{
+    drone:{r:12,hp:30,sp:75,pts:100,dmg:20},
+    swarm:{r:7,hp:10,sp:150,pts:50,dmg:10},
+    gunner:{r:15,hp:70,sp:55,pts:250,dmg:20},
+    steer:1.6,                      // how quickly enemies match their target velocity
+    spawnClearance:260,
+    contactKnock:220,               // enemy bounced back on contact
+    contactShipKnock:160,           // ship bounced back on contact
+    contactSelfDamage:8             // enemy takes this on contact
+  },
+  gunner:{
+    retreat:210,orbit:290,range:520,
+    firstShot:[1.5,3],cooldown:[1.8,2.8],
+    boltSpeed:270,lead:0.35,boltLife:3,boltDamage:10
+  },
+  waves:{
+    firstDelay:0.8,between:1.6,
+    // count = min(max, base + perWave*(wave - startWave + 1)), never below 0
+    drone:{base:2,perWave:1,startWave:1,max:Infinity},  // wave 1 -> 3 drones
+    swarm:{base:0,perWave:3,startWave:2,max:12},
+    gunner:{base:0,perWave:1,startWave:3,max:5}
+  },
+  combo:{window:0.9,maxMult:5},
+  pickup:{                          // green scrap that repairs the hull
+    drop:{drone:{chance:0.15,kind:'small'},gunner:{chance:0.5,kind:'big'}},
+    small:{hull:5,r:9},             // one square; r is the touch radius
+    big:{hull:20,r:18},             // 2x2 squares
+    square:16,gap:3,                // square side and the gap between the big one's squares
+    life:8,blink:2,                 // seconds before it disappears, and how long it blinks first
+    inherit:0.3,scatter:30,drag:1.2,// share of the dead enemy's velocity it keeps, random kick, slowdown
+    spin:1.0,                       // rad/s tumble
+    plumePush:320,                  // your exhaust blows scrap away (0 = off)
+    collectPad:11                   // ship's own radius for pickup
+  },
+  audio:{                           // volumes are 0..1 gains into a master compressor
+    master:0.7,
+    pan:0.7,                        // how far left/right sounds pan with screen position
+    engine:0.35,                    // x throttle
+    engineWide:0.9,                 // wide plume engine volume relative to tight
+    rcs:0.12,                       // cold-gas hiss
+    sizzle:0.12,                    // plume touching an enemy
+    boom:0.6,maxBooms:6,            // explosions, and how many may overlap in a chain
+    kill:0.18,
+    laser:0.07,
+    glug:0.06,                      // fuel dump, per blob
+    hurt:0.35,
+    click:0.05,                     // plume mode switch
+    pickup:0.14,                    // scrap collected
+    chime:0.12                      // new wave
+  }
+};
+/* ===================================================================== */
+
+const cv=document.getElementById('game'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TAU=Math.PI*2;
+let W=0,H=0,stars=[];
+
+function resize(){
+  const d=Math.min(2,window.devicePixelRatio||1);
+  W=cv.clientWidth;H=cv.clientHeight;
+  cv.width=Math.round(W*d);cv.height=Math.round(H*d);
+  ctx.setTransform(d,0,0,d,0,0);
+  stars=[];const n=Math.round(W*H/4200);
+  for(let i=0;i<n;i++)stars.push({x:Math.random()*W,y:Math.random()*H,b:Math.random()});
+}
+addEventListener('resize',resize);resize();
+
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const rr=p=>rnd(p[0],p[1]);
+const wd=(d,s)=>d>s/2?d-s:d<-s/2?d+s:d;
+const wrap=o=>{if(o.x<0)o.x+=W;else if(o.x>=W)o.x-=W;if(o.y<0)o.y+=H;else if(o.y>=H)o.y-=H;};
+function angDiff(a,b){let d=a-b;while(d>Math.PI)d-=TAU;while(d<-Math.PI)d+=TAU;return d;}
+const mode=o=>tight?o.tight:o.wide;
+
+/* ---------- sound: everything synthesized live with Web Audio, no sound files ---------- */
+const AU=(()=>{
+  const A=TUNE.audio;
+  let ac=null,master=null,noiseBuf=null,L=null,muted=false,booms=[];
+  try{muted=localStorage.getItem('rew-muted')==='1';}catch(_){}
+  const now=()=>ac.currentTime;
+  const chain=(...n)=>{for(let i=0;i<n.length-1;i++)n[i].connect(n[i+1]);return n[n.length-1];};
+  const gain=v=>{const g=ac.createGain();g.gain.value=v;return g;};
+  const filt=(type,f,q)=>{const b=ac.createBiquadFilter();b.type=type;b.frequency.value=f;if(q!=null)b.Q.value=q;return b;};
+  const panner=x=>{
+    if(x==null||!ac.createStereoPanner)return gain(1);
+    const p=ac.createStereoPanner();p.pan.value=Math.max(-1,Math.min(1,((x/W)*2-1)*A.pan));return p;
+  };
+  const loopNoise=()=>{const s=ac.createBufferSource();s.buffer=noiseBuf;s.loop=true;s.start(0,Math.random()*1.9);return s;};
+
+  /* browsers only allow audio after the player clicks or presses a key, so this runs from those events */
+  function init(){
+    if(ac){if(ac.state==='suspended')ac.resume();return;}
+    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+    try{ac=new AC();}catch(_){ac=null;return;}
+    const comp=ac.createDynamicsCompressor();
+    comp.threshold.value=-12;comp.knee.value=12;comp.ratio.value=5;comp.attack.value=0.003;comp.release.value=0.2;
+    master=gain(muted?0:A.master);master.connect(comp);comp.connect(ac.destination);
+    noiseBuf=ac.createBuffer(1,ac.sampleRate*2,ac.sampleRate);
+    const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+    L={};
+    // engine: low-passed noise roar plus a sawtooth rumble underneath
+    L.engG=gain(0);L.engG.connect(master);
+    L.engF=filt('lowpass',600,0.8);chain(loopNoise(),L.engF,L.engG);
+    L.osc=ac.createOscillator();L.osc.type='sawtooth';L.osc.frequency.value=55;
+    L.oscF=filt('lowpass',160,1);L.oscG=gain(0.5);chain(L.osc,L.oscF,L.oscG,L.engG);L.osc.start();
+    // RCS: high, thin cold-gas hiss
+    L.rcsG=gain(0);chain(loopNoise(),filt('highpass',2600,0.7),L.rcsG,master);
+    // sizzle while the plume is cooking an enemy
+    L.sizG=gain(0);chain(loopNoise(),filt('bandpass',4200,1.4),L.sizG,master);
+  }
+  /* continuous layers, called every frame */
+  function update(thr,isTight,rcs,siz,active){
+    if(!ac)return;const t=now(),e=active?thr:0;
+    L.engG.gain.setTargetAtTime(e*A.engine*(isTight?1:A.engineWide),t,0.03);
+    L.engF.frequency.setTargetAtTime(isTight?350+1500*e:220+650*e,t,0.05);   // tight: brighter, harsher
+    L.osc.frequency.setTargetAtTime((isTight?62:44)*(0.85+0.3*e),t,0.08);    // wide: deeper rumble
+    L.oscG.gain.setTargetAtTime(isTight?0.35:0.7,t,0.05);
+    L.rcsG.gain.setTargetAtTime(active?Math.min(1,rcs)*A.rcs:0,t,0.02);
+    L.sizG.gain.setTargetAtTime(active?siz*A.sizzle*(0.5+0.5*Math.random()):0,t,0.015);
+  }
+  /* one-shot building blocks: a swept oscillator, and a swept filtered noise burst */
+  function env(g,t,vol,dur){g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(vol,t+0.004);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);}
+  function tone(type,f0,f1,dur,vol,x,delay=0,lp){
+    if(!ac||vol<=0)return;const t=now()+delay;
+    const o=ac.createOscillator();o.type=type;
+    o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(Math.max(1,f1),t+dur);
+    const g=gain(0);env(g,t,vol,dur);
+    const nodes=[o];if(lp)nodes.push(filt('lowpass',lp,0.7));nodes.push(g,panner(x),master);chain(...nodes);
+    o.start(t);o.stop(t+dur+0.05);
+  }
+  function noise(dur,vol,ftype,f0,f1,q,x,delay=0){
+    if(!ac||vol<=0)return;const t=now()+delay;
+    const s=ac.createBufferSource();s.buffer=noiseBuf;
+    const f=filt(ftype,f0,q);f.frequency.setValueAtTime(f0,t);f.frequency.exponentialRampToValueAtTime(Math.max(1,f1),t+dur);
+    const g=gain(0);env(g,t,vol,dur);
+    chain(s,f,g,panner(x),master);s.start(t,Math.random()*1.5);s.stop(t+dur+0.05);
+  }
+  return{
+    init,update,
+    get muted(){return muted;},
+    toggleMute(){
+      muted=!muted;try{localStorage.setItem('rew-muted',muted?'1':'0');}catch(_){}
+      if(ac)master.gain.setTargetAtTime(muted?0:A.master,now(),0.02);
+      return muted;
+    },
+    boom(x,near){                   // near: 1 = on top of the ship, 0 = far away
+      if(!ac)return;const t=now();
+      booms=booms.filter(end=>end>t);if(booms.length>=A.maxBooms)return;
+      const v=A.boom*(0.45+0.55*near)/(1+0.3*booms.length);booms.push(t+0.5);
+      noise(0.75,v,'lowpass',2600,110,0.9,x);tone('sine',120,34,0.4,v*0.9,x);
+    },
+    kill(type,mult,x){              // pitch rises two semitones per combo step
+      const f={swarm:880,drone:560,gunner:330}[type]*Math.pow(2,(mult-1)*2/12);
+      tone('square',f,f*0.45,0.14,A.kill,x,0,3200);noise(0.08,A.kill*0.6,'highpass',3000,1500,0.7,x);
+      if(type==='gunner')tone('sine',150,50,0.3,A.kill*1.2,x);
+    },
+    laser(x){tone('square',1500,260,0.16,A.laser,x,0,2600);},
+    glug(){tone('sine',rnd(150,190),rnd(70,90),0.08,A.glug,null,0,600);},
+    hurt(){tone('sawtooth',150,45,0.3,A.hurt,null,0,900);noise(0.12,A.hurt*0.5,'lowpass',1800,300,0.7);},
+    click(isTight){const f=isTight?1400:900;tone('square',f,f,0.035,A.click);},
+    wave(){tone('triangle',440,440,0.14,A.chime);tone('triangle',660,660,0.22,A.chime,null,0.12);},
+    pickup(big){                    // quick rising chirp; three notes for the big one
+      const n=big?[784,1047,1319]:[880,1319];
+      n.forEach((f,i)=>tone('square',f,f,0.07,A.pickup,null,i*0.055,4000));
+    },
+    over(){tone('sawtooth',260,30,1.4,A.hurt,null,0,700);}
+  };
+})();
+
+/* ---------- input ---------- */
+const keys={};
+const KEYMAP={ArrowLeft:'L',KeyA:'L',ArrowRight:'R',KeyD:'R',ArrowUp:'T',KeyW:'T',KeyX:'D',Space:'HB',KeyQ:'SL',KeyE:'SR',ArrowDown:'B',KeyS:'B'};
+addEventListener('keydown',e=>{
+  AU.init();
+  if(state==='intro'){                 // Enter, Space or Esc skips the splash
+    if(['Enter','Space','Escape'].includes(e.code)){e.preventDefault();if(!e.repeat)start();}
+    return;
+  }
+  if(e.code==='Escape'&&state==='over'&&!ov.hidden){goTitle();return;}
+  if(KEYMAP[e.code]){keys[KEYMAP[e.code]]=true;e.preventDefault();}
+  if(e.repeat)return;
+  if(['ShiftLeft','ShiftRight','KeyF'].includes(e.code))toggleMode();
+  if(e.code==='KeyM')toggleMute();
+  if(e.code==='KeyP'||e.code==='Escape')togglePause();
+  if(e.code==='Enter'&&state!=='play'){e.preventDefault();primary();}
+});
+addEventListener('keyup',e=>{if(KEYMAP[e.code])keys[KEYMAP[e.code]]=false;});
+addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
+document.querySelectorAll('#touch [data-k]').forEach(b=>{
+  const k=b.dataset.k;
+  const on=e=>{e.preventDefault();AU.init();keys[k]=true;b.classList.add('on');try{b.setPointerCapture(e.pointerId)}catch(_){}};
+  const off=()=>{keys[k]=false;b.classList.remove('on');};
+  b.addEventListener('pointerdown',on);
+  ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>b.addEventListener(ev,off));
+});
+$('t-mode').addEventListener('pointerdown',e=>{e.preventDefault();AU.init();toggleMode();});
+$('t-snd').addEventListener('pointerdown',e=>{e.preventDefault();AU.init();toggleMute();});
+addEventListener('contextmenu',e=>e.preventDefault());
+cv.addEventListener('pointerdown',()=>{if(state==='intro')start();});   // tap or click skips the splash
+
+/* handbrake lock: hides its help text and touch button when disabled */
+function applyHandbrakeLock(){
+  const on=TUNE.rcs.handbrake.enabled;
+  document.querySelectorAll('[data-hb]').forEach(n=>n.hidden=!on);
+  $('t-brake').classList.toggle('off',!on);
+}
+applyHandbrakeLock();
+$('t-snd').textContent=AU.muted?'MUTED':'SND';
+
+/* ---------- state ---------- */
+const COL={drone:'#ff4fd8',swarm:'#ffe14f',gunner:'#4fe3ff'};
+const T={};
+for(const k of Object.keys(COL))T[k]={...TUNE.enemy[k],col:COL[k]};
+let state='title',tight=true,S,clock=0;
+function newShip(){return{x:W/2,y:H/2,vx:0,vy:0,a:-Math.PI/2,va:0,spin:0,thr:0,hull:TUNE.ship.hull,inv:0};}
+function reset(){S={ship:newShip(),en:[],bolts:[],fuel:[],blasts:[],parts:[],texts:[],score:0,wave:0,tank:TUNE.dump.tank,rcs:TUNE.rcs.tank,dumpT:0,shake:0,combo:0,comboT:0,waveT:TUNE.waves.firstDelay,burnId:0,burning:false,sizzle:0,pickups:[],healT:0};}
+reset();
+
+function toggleMode(){tight=!tight;if(state==='play')AU.click(tight);}
+function toggleMute(){
+  const m=AU.toggleMute();
+  $('t-snd').textContent=m?'MUTED':'SND';
+  if(state==='play')text(W/2,H/2+50,m?'SOUND OFF':'SOUND ON','#7d86b3',1.0,15);
+}
+function text(x,y,s,col,life,size){S.texts.push({x,y,s,col,life,max:life,size});}
+function burst(x,y,col,n,v){for(let i=0;i<n;i++){const a=Math.random()*TAU,s=v*rnd(0.2,1),l=rnd(0.35,0.9);S.parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:l,max:l,col,w:1.6});}}
+
+function spawn(type){
+  const t=T[type];let x,y,tries=0;
+  do{
+    if(Math.random()<.5){x=Math.random()<.5?0:W-1;y=Math.random()*H;}
+    else{x=Math.random()*W;y=Math.random()<.5?0:H-1;}
+  }while(Math.hypot(wd(x-S.ship.x,W),wd(y-S.ship.y,H))<TUNE.enemy.spawnClearance&&++tries<20);
+  S.en.push({type,x,y,vx:0,vy:0,hp:t.hp,max:t.hp,r:t.r,rot:Math.random()*TAU,hot:0,cd:rr(TUNE.gunner.firstShot)});
+}
+function waveCount(c,w){return Math.max(0,Math.min(c.max,c.base+c.perWave*(w-c.startWave+1)));}
+function nextWave(){
+  S.wave++;const w=S.wave,WV=TUNE.waves;
+  for(const type of ['drone','swarm','gunner']){const n=waveCount(WV[type],w);for(let i=0;i<n;i++)spawn(type);}
+  text(W/2,H/2-60,'WAVE '+w,'#e8ecff',1.6,22);
+  AU.wave();
+}
+
+function damage(e,amt){if(e.hp<=0)return;e.hp-=amt;if(e.hp<=0)kill(e);}
+function kill(e){
+  const t=T[e.type];S.comboT=TUNE.combo.window;S.combo++;
+  const m=Math.min(TUNE.combo.maxMult,S.combo);S.score+=t.pts*m;
+  burst(e.x,e.y,t.col,e.type==='swarm'?10:18,220);
+  if(m>1)text(e.x,e.y-16,'x'+m,t.col,0.9,15);
+  AU.kill(e.type,m,e.x);
+  const PK=TUNE.pickup,drop=PK.drop[e.type];
+  if(drop&&Math.random()<drop.chance){
+    const a=Math.random()*TAU,k=rnd(0.3,1)*PK.scatter;
+    S.pickups.push({kind:drop.kind,x:e.x,y:e.y,vx:e.vx*PK.inherit+Math.cos(a)*k,vy:e.vy*PK.inherit+Math.sin(a)*k,
+      rot:Math.random()*TAU,spin:(Math.random()<.5?-1:1)*PK.spin,life:PK.life,ph:Math.random()*TAU});
+  }
+  S.shake=Math.min(12,S.shake+3);
+}
+function hurt(n){
+  const s=S.ship;if(s.inv>0||state!=='play')return;
+  s.hull-=n;s.inv=TUNE.ship.invuln;S.shake=Math.min(14,S.shake+4);
+  if(s.hull<=0){s.hull=0;gameOver();}else AU.hurt();
+}
+function explode(x,y){
+  const B=TUNE.blast,P=TUNE.dump.power;              // P: one droplet's share of a full-strength blast
+  S.blasts.push({x,y,t:0,max:B.duration,R:B.radius,k:Math.sqrt(P)});
+  for(const e of S.en){
+    const dx=wd(e.x-x,W),dy=wd(e.y-y,H),d=Math.hypot(dx,dy);
+    if(d<B.radius+e.r){
+      damage(e,P*B.damage*Math.max(B.minDamageFrac,1-d/B.damageFalloff));
+      const k=P*B.push*(1-d/B.pushFalloff),a=Math.atan2(dy,dx);
+      e.vx+=Math.cos(a)*k;e.vy+=Math.sin(a)*k;e.hot=0.15;
+    }
+  }
+  for(const b of S.fuel)if(b.fuse<0&&Math.hypot(wd(b.x-x,W),wd(b.y-y,H))<B.chainRadius)b.fuse=rr(B.chainFuse);
+  for(const b of S.bolts)if(Math.hypot(wd(b.x-x,W),wd(b.y-y,H))<B.clearBolts)b.dead=true;
+  const s=S.ship,dx=wd(s.x-x,W),dy=wd(s.y-y,H),d=Math.hypot(dx,dy);
+  AU.boom(x,Math.max(0,1-d/700));
+  if(state==='play'&&d<B.shipRadius){
+    const f=1-d/B.shipRadius,a=Math.atan2(dy,dx);
+    s.vx+=Math.cos(a)*P*B.shipPush*f;s.vy+=Math.sin(a)*P*B.shipPush*f;
+    s.spin+=(Math.random()<.5?-1:1)*Math.sqrt(P)*B.shipSpin*f;   // random-sign kicks add up like a random walk, hence sqrt
+    if(d<B.shipHurtRadius)hurt(B.shipHurt);                         // per hit; the invulnerability window limits it per chain
+  }
+  burst(x,y,null,Math.max(4,Math.round(16*P)),300);
+  S.shake=Math.min(14,S.shake+4*P);
+}
+
+/* ---------- plume ---------- */
+function plume(s,dt,visualOnly){
+  const P=TUNE.plume;
+  const dir=s.a+Math.PI,L=s.thr*mode(P.length),half=mode(P.halfAngle),dps=s.thr*mode(P.dps);
+  const ox=s.x+Math.cos(dir)*P.nozzle,oy=s.y+Math.sin(dir)*P.nozzle;
+  const n=Math.ceil(s.thr*mode(P.partRate)*dt*60);
+  for(let i=0;i<n;i++){
+    const a=dir+rnd(-half,half),v=mode(P.partSpeed)*rnd(0.75,1.1),life=(L/v)*rnd(0.7,1.05);
+    S.parts.push({x:ox,y:oy,vx:Math.cos(a)*v+s.vx,vy:Math.sin(a)*v+s.vy,life,max:life,w:tight?1.6:2.2});
+  }
+  if(visualOnly)return;
+  const hit=(x,y,r)=>{
+    const dx=wd(x-ox,W),dy=wd(y-oy,H),d=Math.hypot(dx,dy);
+    if(d>L+r)return -1;
+    const pad=d>r?Math.asin(Math.min(1,r/d)):Math.PI;
+    return Math.abs(angDiff(Math.atan2(dy,dx),dir))<=half+pad?d:-1;
+  };
+  for(const e of S.en){
+    const d=hit(e.x,e.y,e.r);
+    if(d>=0){
+      let k=1;                                        // share of the flame this enemy catches
+      if(mode(P.coverage)){
+        const ang=d>e.r?Math.asin(e.r/d):Math.PI/2;   // enemy's angular half-width seen from the nozzle
+        k=Math.max(P.coverageFloor,Math.min(P.coverageMax,ang/half));
+      }
+      damage(e,dps*k*(1-P.tipFalloff*d/(L+e.r))*dt);e.hot=0.12;
+      S.sizzle=Math.max(S.sizzle,s.thr*k);           // louder sizzle when the enemy is bathed in fire
+      e.vx+=Math.cos(dir)*P.push*s.thr*dt;e.vy+=Math.sin(dir)*P.push*s.thr*dt;
+    }
+  }
+  for(const b of S.fuel)if(b.fuse<0&&b.burn<S.burnId&&hit(b.x,b.y,b.r)>=0)b.fuse=rr(P.ignite);  // the fading plume of the burn that was cut can't light its own dump
+  for(const b of S.bolts)if(hit(b.x,b.y,3)>=0)b.dead=true;
+  const PK=TUNE.pickup;
+  if(PK.plumePush)for(const p of S.pickups)if(hit(p.x,p.y,PK[p.kind].r)>=0){
+    p.vx+=Math.cos(dir)*PK.plumePush*s.thr*dt;p.vy+=Math.sin(dir)*PK.plumePush*s.thr*dt;
+  }
+}
+
+/* cold-gas RCS puff: visual only, never ignites fuel */
+function puff(s,dir,off,dt){
+  const ox=s.x+Math.cos(dir)*off,oy=s.y+Math.sin(dir)*off,n=Math.ceil(dt*60*1.5);
+  for(let i=0;i<n;i++){const a=dir+rnd(-0.35,0.35),v=rnd(110,170),l=rnd(0.12,0.22);
+    S.parts.push({x:ox,y:oy,vx:Math.cos(a)*v+s.vx,vy:Math.sin(a)*v+s.vy,life:l,max:l,col:'#cfe8ff',w:1.2});}
+}
+/* ---------- update ---------- */
+function updatePlay(dt){
+  const s=S.ship,SH=TUNE.ship,R=TUNE.rcs,HBT=R.handbrake,DP=TUNE.dump;
+  const rot=(keys.R?1:0)-(keys.L?1:0);
+  s.va+=(rot*SH.turnRate-s.va)*Math.min(1,dt*SH.turnResponse);
+  s.spin*=Math.exp(-SH.spinDecay*dt);
+  s.a+=(s.va+s.spin)*dt;
+  const dropCost=DP.tank/DP.dropletsPerTank;
+  const dumping=keys.D&&S.tank>=dropCost-1e-6; // need enough for a whole droplet
+  const burnCmd=keys.T&&!dumping;
+  if(burnCmd&&!S.burning)S.burnId++;   // each relight is a new burn; only a burn newer than a fuel blob can ignite it
+  S.burning=burnCmd;
+  s.thr=burnCmd?Math.min(1,s.thr+dt*SH.throttleUp):Math.max(0,s.thr-dt*SH.throttleDown);
+  const acc=s.thr*mode(SH.thrust);
+  s.vx+=Math.cos(s.a)*acc*dt;s.vy+=Math.sin(s.a)*acc*dt;
+  const dr=Math.exp(-SH.drag*dt);s.vx*=dr;s.vy*=dr;
+  const sp=Math.hypot(s.vx,s.vy);if(sp>SH.maxSpeed){s.vx*=SH.maxSpeed/sp;s.vy*=SH.maxSpeed/sp;}
+  const hbKey=keys.HB&&HBT.enabled;
+  // the handbrake owns the RCS while held: strafe and retro are ignored, it only fires to cancel drift
+  const lat=hbKey?0:(keys.SR?1:0)-(keys.SL?1:0),retro=keys.B&&!hbKey?1:0;
+  const spd=Math.hypot(s.vx,s.vy);
+  /* all-stop handbrake: push straight against the drift (retrograde), split between the
+     nose thruster (pushes backward) and one side thruster in the ship's frame.
+     Push size T is the largest that fits every limit: maxOutput, each thruster's own
+     strength for its share, and no overshoot. Tail-first drift: the nose can't help,
+     so only the sideways component is braked. */
+  let hbSet=[],hbX=0,hbY=0,hbOut=0;
+  if(hbKey&&spd>HBT.minSpeed){
+    const nx=-Math.cos(s.a),ny=-Math.sin(s.a);        // nose thruster push direction (backward)
+    const lx=-Math.sin(s.a),ly=Math.cos(s.a);         // ship's lateral axis
+    const ux=-s.vx/spd,uy=-s.vy/spd;                  // retrograde unit vector
+    const pn=ux*nx+uy*ny,pl=ux*lx+uy*ly,ps=Math.abs(pl);
+    const sideDir=pl>=0?Math.PI/2:-Math.PI/2;          // which side thruster's push we need
+    let T;
+    if(pn>1e-6){
+      T=Math.min(HBT.maxOutput,HBT.nose/pn,ps>1e-6?HBT.side/ps:Infinity,spd/dt);
+      hbX=ux*T*dt;hbY=uy*T*dt;
+      hbSet.push({d:s.a+Math.PI,off:15});
+      if(ps*T>1e-3)hbSet.push({d:s.a+sideDir,off:9});
+    }else if(ps>1e-6){
+      const lat=spd*ps;                                // sideways speed to cancel
+      T=Math.min(HBT.side,HBT.maxOutput,lat/dt);
+      hbX=Math.cos(s.a+sideDir)*T*dt;hbY=Math.sin(s.a+sideDir)*T*dt;
+      hbSet.push({d:s.a+sideDir,off:9});
+    }else T=0;
+    hbOut=T/HBT.maxOutput;                             // 0..1 share of the pump's max output
+  }
+  const hb=hbSet.length;
+  let rcsLvl=0;                                        // for the RCS hiss
+  if((lat||retro||hb)&&S.rcs>0){
+    rcsLvl=Math.abs(lat)+retro+hbOut;
+    S.rcs=Math.max(0,S.rcs-(Math.abs(lat)+retro+hbOut)*R.drain*dt);
+    if(hb){
+      s.vx+=hbX;s.vy+=hbY;
+      for(const t of hbSet)puff(s,t.d+Math.PI,t.off,dt);
+    }
+    if(lat){const la=s.a+lat*Math.PI/2;s.vx+=Math.cos(la)*R.strafe*dt;s.vy+=Math.sin(la)*R.strafe*dt;puff(s,la+Math.PI,9,dt);}
+    if(retro){s.vx-=Math.cos(s.a)*R.retro*dt;s.vy-=Math.sin(s.a)*R.retro*dt;puff(s,s.a,15,dt);}
+  }else if(!lat&&!retro&&!hbKey)S.rcs=Math.min(R.tank,S.rcs+R.recharge*dt);
+  s.x+=s.vx*dt;s.y+=s.vy*dt;wrap(s);
+  s.inv=Math.max(0,s.inv-dt);
+
+  if(dumping){
+    S.dumpT-=dt;
+    while(S.dumpT<=0&&S.tank>=dropCost-1e-6){             // emits every interval, paying a fixed cost per droplet
+      S.dumpT+=DP.interval;S.tank-=dropCost;
+      const bx=s.x-Math.cos(s.a)*DP.offset,by=s.y-Math.sin(s.a)*DP.offset;
+      const a=s.a+Math.PI+(Math.random()+Math.random()-1)*DP.spread;   // denser toward the centre of the cone
+      const v=rr(DP.speed),r0=rr(DP.size);
+      S.fuel.push({x:bx,y:by,vx:s.vx*DP.inherit+Math.cos(a)*v,vy:s.vy*DP.inherit+Math.sin(a)*v,
+        age:0,life:DP.life,r0,r:r0,fuse:-1,ph:Math.random()*TAU,burn:S.burnId});
+      if(Math.random()<0.35)AU.glug();
+    }
+    if(S.dumpT<0)S.dumpT=0;
+  }else{
+    S.dumpT=0;
+    if(!keys.D)S.tank=Math.min(DP.tank,S.tank+DP.recharge*dt);   // no refill while X is held, so an empty tank stays empty
+  }
+
+  S.sizzle=0;
+  if(s.thr>0.03)plume(s,dt,false);
+
+  for(const b of S.fuel){
+    b.x+=b.vx*dt;b.y+=b.vy*dt;const f=Math.exp(-DP.drag*dt);b.vx*=f;b.vy*=f;wrap(b);
+    b.life-=dt;b.age+=dt;b.ph+=dt*5;
+    b.r=b.r0*(1+(DP.grow-1)*Math.min(1,b.age/(DP.life-DP.fade)));   // swells as it vaporizes
+    if(b.fuse>=0){b.fuse-=dt;if(b.fuse<=0){b.dead=true;explode(b.x,b.y);}}
+    else if(b.life<=0)b.dead=true;
+  }
+  S.fuel=S.fuel.filter(b=>!b.dead);
+
+  const PK=TUNE.pickup;
+  for(const p of S.pickups){
+    p.x+=p.vx*dt;p.y+=p.vy*dt;const f=Math.exp(-PK.drag*dt);p.vx*=f;p.vy*=f;wrap(p);
+    p.rot+=p.spin*dt;p.ph+=dt*4;p.life-=dt;
+    if(p.life<=0){p.dead=true;continue;}
+    if(Math.hypot(wd(s.x-p.x,W),wd(s.y-p.y,H))<PK[p.kind].r+PK.collectPad){
+      p.dead=true;const amt=PK[p.kind].hull;
+      s.hull=Math.min(SH.hull,s.hull+amt);S.healT=0.45;
+      text(s.x,s.y-22,'+'+amt,'#6dff9e',0.9,16);
+      burst(s.x,s.y,'#6dff9e',p.kind==='big'?18:10,150);
+      AU.pickup(p.kind==='big');
+    }
+  }
+  S.pickups=S.pickups.filter(p=>!p.dead);
+  S.healT=Math.max(0,S.healT-dt);
+
+  const EN=TUNE.enemy,G=TUNE.gunner;
+  for(const e of S.en){
+    if(e.hp<=0)continue;
+    const t=T[e.type];
+    const dx=wd(s.x-e.x,W),dy=wd(s.y-e.y,H),d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;
+    let tx=ux,ty=uy;
+    if(e.type==='gunner'){
+      if(d<G.retreat){tx=-ux;ty=-uy;}else if(d<G.orbit){tx=-uy;ty=ux;}
+      e.cd-=dt;
+      if(e.cd<=0&&d<G.range){
+        const a=Math.atan2(dy+s.vy*G.lead,dx+s.vx*G.lead);
+        S.bolts.push({x:e.x,y:e.y,vx:Math.cos(a)*G.boltSpeed,vy:Math.sin(a)*G.boltSpeed,life:G.boltLife});
+        AU.laser(e.x);
+        e.cd=rr(G.cooldown);
+      }
+    }
+    e.vx+=(tx*t.sp-e.vx)*Math.min(1,dt*EN.steer);
+    e.vy+=(ty*t.sp-e.vy)*Math.min(1,dt*EN.steer);
+    e.x+=e.vx*dt;e.y+=e.vy*dt;wrap(e);
+    e.rot+=dt*(e.type==='swarm'?5:1.2);
+    e.hot-=dt;
+    if(d<e.r+SH.contactPad){
+      hurt(t.dmg);
+      e.vx-=ux*EN.contactKnock;e.vy-=uy*EN.contactKnock;
+      s.vx+=ux*EN.contactShipKnock;s.vy+=uy*EN.contactShipKnock;
+      damage(e,EN.contactSelfDamage);
+    }
+  }
+  S.en=S.en.filter(e=>e.hp>0);
+
+  for(const b of S.bolts){
+    b.x+=b.vx*dt;b.y+=b.vy*dt;wrap(b);b.life-=dt;
+    if(b.life<=0)b.dead=true;
+    for(const f of S.fuel)if(f.fuse<0&&Math.hypot(wd(f.x-b.x,W),wd(f.y-b.y,H))<f.r+4){f.fuse=TUNE.blast.boltIgniteFuse;b.dead=true;break;}
+    if(!b.dead&&Math.hypot(wd(s.x-b.x,W),wd(s.y-b.y,H))<SH.boltHitRadius){hurt(G.boltDamage);b.dead=true;}
+  }
+  S.bolts=S.bolts.filter(b=>!b.dead);
+
+  S.comboT-=dt;if(S.comboT<=0)S.combo=0;
+  if(S.en.length===0&&state==='play'){
+    S.waveT-=dt;
+    if(S.waveT<=0){if(S.wave>0)s.hull=Math.min(SH.hull,s.hull+SH.hullRepairPerWave);nextWave();S.waveT=TUNE.waves.between;}
+  }
+  AU.update(s.thr,tight,rcsLvl,S.sizzle,state==='play');
+  updateFx(dt);
+}
+function updateTitle(dt){
+  const s=S.ship;s.x=W/2;s.y=H/2+Math.min(90,H*0.18);s.vx=s.vy=0;
+  s.a+=dt*0.55;s.thr=0.8;
+  plume(s,dt,true);
+  updateFx(dt);
+}
+function updateFx(dt){
+  for(const p of S.parts){p.x+=p.vx*dt;p.y+=p.vy*dt;const f=Math.exp(-1.2*dt);p.vx*=f;p.vy*=f;wrap(p);p.life-=dt;}
+  S.parts=S.parts.filter(p=>p.life>0);
+  if(S.parts.length>1800)S.parts.splice(0,S.parts.length-1800);
+  for(const b of S.blasts)b.t+=dt;
+  S.blasts=S.blasts.filter(b=>b.t<b.max);
+  for(const t of S.texts){t.y-=20*dt;t.life-=dt;}
+  S.texts=S.texts.filter(t=>t.life>0);
+  S.shake*=Math.exp(-6*dt);
+}
+
+/* ---------- draw ---------- */
+function flameCol(f){return f>0.8?'#fff4d6':f>0.55?'#ffd84a':f>0.3?'#ff8a2a':'#ff3d2e';}
+function drawShip(s){
+  ctx.save();ctx.translate(s.x,s.y);ctx.rotate(s.a);
+  ctx.globalAlpha=s.inv>0&&Math.floor(clock*20)%2?0.35:1;
+  ctx.strokeStyle='#e8ecff';ctx.shadowColor='#e8ecff';ctx.lineWidth=1.8;
+  ctx.beginPath();ctx.moveTo(15,0);ctx.lineTo(-10,9);ctx.lineTo(-6,0);ctx.lineTo(-10,-9);ctx.closePath();ctx.stroke();
+  if(s.thr>0.03){ctx.strokeStyle='#ffd84a';ctx.shadowColor='#ff8a2a';ctx.beginPath();ctx.moveTo(-7,-4);ctx.lineTo(-7,4);ctx.stroke();}
+  ctx.restore();ctx.globalAlpha=1;
+}
+function drawCone(s){
+  if(s.thr<=0.03)return;
+  const P=TUNE.plume,dir=s.a+Math.PI,L=s.thr*mode(P.length),half=mode(P.halfAngle);
+  const ox=s.x+Math.cos(dir)*P.nozzle,oy=s.y+Math.sin(dir)*P.nozzle;
+  ctx.fillStyle=`rgba(255,138,42,${0.07*s.thr})`;
+  ctx.beginPath();ctx.moveTo(ox,oy);ctx.arc(ox,oy,L,dir-half,dir+half);ctx.closePath();ctx.fill();
+}
+function drawPickups(){
+  const PK=TUNE.pickup,q=PK.square,h=q/2,off=(q+PK.gap)/2;
+  ctx.save();ctx.lineWidth=1.6;ctx.shadowColor='#6dff9e';ctx.shadowBlur=10;
+  for(const p of S.pickups){
+    if(p.life<PK.blink&&Math.floor(p.life*10)%2)continue;       // blink before vanishing
+    const pulse=0.7+0.3*Math.sin(p.ph);
+    ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);
+    ctx.strokeStyle=`rgba(109,255,158,${pulse})`;ctx.fillStyle=`rgba(109,255,158,${0.1*pulse})`;
+    const cells=p.kind==='big'?[[-off,-off],[off,-off],[-off,off],[off,off]]:[[0,0]];
+    for(const[cx,cy]of cells){ctx.fillRect(cx-h,cy-h,q,q);ctx.strokeRect(cx-h,cy-h,q,q);}
+    ctx.restore();
+  }
+  ctx.restore();
+}
+function drawEnemy(e){
+  const t=T[e.type],col=e.hot>0?'#ffffff':t.col,r=e.r;
+  ctx.save();ctx.translate(e.x,e.y);
+  ctx.strokeStyle=col;ctx.shadowColor=t.col;ctx.lineWidth=1.6;
+  if(e.type==='gunner'){
+    const a=Math.atan2(wd(S.ship.y-e.y,H),wd(S.ship.x-e.x,W));
+    ctx.beginPath();for(let i=0;i<6;i++){const q=e.rot+i*TAU/6;ctx.lineTo(Math.cos(q)*r,Math.sin(q)*r);}ctx.closePath();ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(Math.cos(a)*(r+7),Math.sin(a)*(r+7));ctx.stroke();
+  }else{
+    ctx.rotate(e.rot);ctx.beginPath();
+    if(e.type==='drone'){ctx.moveTo(r,0);ctx.lineTo(0,r*0.7);ctx.lineTo(-r,0);ctx.lineTo(0,-r*0.7);ctx.closePath();ctx.moveTo(-r*0.4,0);ctx.lineTo(r*0.4,0);}
+    else{ctx.moveTo(r,0);ctx.lineTo(-r*0.7,r*0.8);ctx.lineTo(-r*0.7,-r*0.8);ctx.closePath();}
+    ctx.stroke();
+  }
+  ctx.restore();
+  if(e.hp<e.max){
+    ctx.save();ctx.shadowBlur=0;ctx.globalAlpha=0.55;ctx.strokeStyle=t.col;ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.arc(e.x,e.y,r+6,-Math.PI/2,-Math.PI/2+TAU*Math.max(0,e.hp/e.max));ctx.stroke();ctx.restore();
+  }
+}
+function draw(){
+  ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;ctx.shadowBlur=0;
+  ctx.fillStyle='#05060d';ctx.fillRect(0,0,W,H);
+  ctx.save();
+  if(S.shake>0.3&&!RM)ctx.translate(rnd(-1,1)*S.shake,rnd(-1,1)*S.shake);
+  for(const st of stars){ctx.fillStyle=`rgba(150,165,255,${0.12+st.b*0.45})`;ctx.fillRect(st.x,st.y,1.2,1.2);}
+  for(const b of S.fuel){
+    const a=Math.min(1,b.life/TUNE.dump.fade),pulse=0.6+0.4*Math.sin(b.ph);
+    ctx.strokeStyle=b.fuse>=0?'#ffffff':`rgba(181,107,255,${a*pulse})`;ctx.lineWidth=1.3;
+    ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,TAU);ctx.stroke();
+  }
+  drawPickups();
+  ctx.globalCompositeOperation='lighter';
+  const shipShown=state!=='over'&&state!=='intro';
+  if(shipShown)drawCone(S.ship);
+  for(const x of S.blasts){
+    const f=x.t/x.max,r=x.R*(0.3+0.7*Math.sqrt(f)),k=(x.k||1)*(1-f);   // k: droplet blasts glow less so a chain doesn't white out
+    const g=ctx.createRadialGradient(x.x,x.y,0,x.x,x.y,r);
+    g.addColorStop(0,`rgba(255,240,200,${0.5*k})`);g.addColorStop(0.5,`rgba(255,120,40,${0.32*k})`);g.addColorStop(1,'rgba(255,40,20,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(x.x,x.y,r,0,TAU);ctx.fill();
+    ctx.strokeStyle=`rgba(255,170,80,${0.75*k})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(x.x,x.y,r*1.05,0,TAU);ctx.stroke();
+  }
+  for(const p of S.parts){
+    const f=p.life/p.max;
+    ctx.strokeStyle=p.col||flameCol(f);ctx.globalAlpha=Math.min(1,f*1.6);ctx.lineWidth=p.w;
+    ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x-p.vx*0.022,p.y-p.vy*0.022);ctx.stroke();
+  }
+  ctx.globalAlpha=1;
+  ctx.strokeStyle='#4fe3ff';ctx.lineWidth=2;
+  for(const b of S.bolts){ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*0.04,b.y-b.vy*0.04);ctx.stroke();}
+  ctx.globalCompositeOperation='source-over';
+  ctx.shadowBlur=10;
+  for(const e of S.en)drawEnemy(e);
+  if(shipShown)drawShip(S.ship);
+  ctx.shadowBlur=0;
+  ctx.textAlign='center';
+  for(const t of S.texts){
+    ctx.globalAlpha=Math.min(1,t.life/t.max*2);ctx.fillStyle=t.col;
+    ctx.font=`${t.size}px 'Share Tech Mono', ui-monospace, monospace`;ctx.fillText(t.s,t.x,t.y);
+  }
+  ctx.globalAlpha=1;
+  ctx.restore();
+  if(state==='intro')drawIntro();
+}
+
+/* ---------- splash: "presented by" crawl, shown once per page load ---------- */
+const INTRO={duration:2.6,
+  small:'presented by',big:'prerevenue games',
+  vanishY:0.16,startY:0.6,     // fractions of screen height: where the text recedes toward, and where it starts
+  farthest:4.5};               // how far it recedes: 1 = full size, 4.5 = about a quarter size
+let introT=0,introShown=false;
+function mixCol(a,b,f){return `rgb(${a.map((v,i)=>Math.round(v+(b[i]-v)*f)).join(',')})`;}
+const smooth=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
+function drawIntro(){
+  const p=Math.min(1,introT/INTRO.duration);
+  const z=RM?1:1+(INTRO.farthest-1)*Math.pow(p,1.6),sc=1/z;    // distance into the screen, easing in so it's readable first; reduced motion stays put
+  const vp=H*INTRO.vanishY,y=vp+(H*INTRO.startY-vp)*sc;          // rises toward the vanishing point as it recedes
+  const fade=Math.max(1-smooth(0,0.1,p),smooth(0.35,1,p));       // quick fade in, then dissolves into the background
+  const bg=[5,6,13];
+  const big=Math.min(58,W*0.085);
+  ctx.save();
+  ctx.translate(W/2,y);ctx.scale(sc,sc*0.8);                     // slight vertical squash reads as a tilted plane
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.shadowColor=`rgba(255,138,42,${0.55*(1-fade)})`;ctx.shadowBlur=18;
+  ctx.font=`${Math.round(big*0.36)}px 'Share Tech Mono', ui-monospace, monospace`;
+  ctx.fillStyle=mixCol([125,134,179],bg,fade);
+  ctx.fillText(INTRO.small.split('').join(' '),0,-big*0.85);     // letter-spaced
+  ctx.font=`${Math.round(big)}px 'Major Mono Display', 'Courier New', monospace`;
+  ctx.fillStyle=mixCol([232,236,255],bg,fade);
+  ctx.fillText(INTRO.big,0,0);
+  ctx.restore();
+}
+function beginIntro(){
+  introShown=true;introT=0;state='intro';ov.hidden=true;
+  S.parts.length=0;for(const k in keys)keys[k]=false;
+}
+
+/* ---------- HUD & overlay ---------- */
+const el={score:$('score'),wave:$('wave'),hull:$('hull'),tank:$('tank'),rcs:$('rcs'),mode:$('mode')};
+const hudEl=$('hud');
+function hud(){
+  hudEl.style.visibility=state==='intro'?'hidden':'';   // clean screen for the splash
+  el.score.textContent=S.score.toLocaleString();
+  el.wave.textContent=Math.max(1,S.wave);
+  el.hull.style.width=(S.ship.hull/TUNE.ship.hull*100)+'%';el.hull.classList.toggle('low',S.ship.hull<TUNE.ship.hull*0.3);
+  el.hull.classList.toggle('heal',S.healT>0);
+  el.tank.style.width=(S.tank/TUNE.dump.tank*100)+'%';el.rcs.style.width=(S.rcs/TUNE.rcs.tank*100)+'%';
+  el.mode.textContent=tight?'TIGHT':'WIDE';
+}
+const ov=$('overlay'),ovTitle=$('ov-title'),ovText=$('ov-text'),ovHelp=$('ov-help'),ovTip=$('ov-tip'),ovBtn=$('ov-btn');
+const ovBtn2=$('ov-btn2');
+const TITLE_CARD=['rocket exhaust weapon','Your guns are dead. The engine still works. Point the burn at them.','LIGHT THE ENGINE'];
+function showOverlay(title,txt,btn,help,btn2){
+  ovTitle.textContent=title;ovText.textContent=txt;ovBtn.textContent=btn;
+  ovBtn2.hidden=!btn2;if(btn2)ovBtn2.textContent=btn2;
+  ovHelp.hidden=!help;ovTip.hidden=!help;ov.hidden=false;
+}
+function goTitle(){
+  reset();tight=true;state='title';
+  showOverlay(...TITLE_CARD,true,null);
+  ovBtn.focus({preventScroll:true});
+}
+function start(){reset();tight=true;state='play';ov.hidden=true;for(const k in keys)keys[k]=false;}
+function gameOver(){
+  state='over';const s=S.ship;
+  burst(s.x,s.y,'#e8ecff',40,320);burst(s.x,s.y,null,40,260);S.shake=14;
+  AU.boom(s.x,1);AU.over();
+  setTimeout(()=>{if(state==='over')showOverlay('hull breached',`Score ${S.score.toLocaleString()} · reached wave ${S.wave}`,'RELIGHT',false,'START SCREEN');},900);
+}
+function togglePause(){
+  if(state==='play'){state='pause';showOverlay('paused','The drift will wait for you.','RESUME',true);}
+  else if(state==='pause'){state='play';ov.hidden=true;}
+}
+function primary(){
+  AU.init();
+  if(state==='pause')togglePause();
+  else if(state==='title'&&!introShown)beginIntro();   // first launch only
+  else start();
+}
+ovBtn.addEventListener('click',primary);
+ovBtn2.addEventListener('click',()=>{AU.init();goTitle();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&state==='play')togglePause();});
+
+/* ---------- loop ---------- */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(0.033,(now-last)/1000);last=now;clock+=dt;
+  if(state==='play')updatePlay(dt);
+  else{
+    AU.update(0,tight,0,0,false);   // silence engine, RCS and sizzle while paused, on the title and after death
+    if(state==='title')updateTitle(dt);
+    else if(state==='over')updateFx(dt);
+    else if(state==='intro'){introT+=dt;updateFx(dt);if(introT>=INTRO.duration)start();}
+  }
+  draw();hud();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
